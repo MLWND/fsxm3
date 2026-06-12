@@ -1,0 +1,47 @@
+# === 核心框架 ===
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-text-splitters>=0.3.0
+
+# === LLM（智谱 AI，OpenAI 兼容接口）===
+langchain-openai>=0.2.0
+
+# === Embedding（本地 HuggingFace）===
+langchain-huggingface>=0.1.0
+sentence-transformers>=3.0.0
+transformers>=4.40.0
+torch>=2.0.0
+
+# === 向量库 ===
+langchain-chroma>=0.2.0
+
+# === Agent 框架（V3）===
+langgraph>=0.2.0
+
+# === 文档加载器 ===
+pypdf>=4.0.0
+python-docx>=1.1.0
+
+# === 后端 ===
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# === 前端 ===
+streamlit>=1.38.0
+requests>=2.32.0
+
+# === 数据库 ===
+sqlalchemy>=2.0.0
+
+# === 配置 ===
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# === 混合检索（BM25）===
+rank_bm25>=0.2.2
+jieba>=0.42.1
+
+# === 工具 ===
+loguru>=0.7.0
