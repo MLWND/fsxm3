@@ -1,6 +1,7 @@
 """文档管理 API 端点。"""
 
-import shutil
+import json
+import threading
 import uuid
 from pathlib import Path
 
@@ -23,50 +24,80 @@ from manifest.manager import check_file, remove_from_manifest, update_manifest
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".txt", ".pdf", ".docx"}
+ALLOWED_EXTENSIONS = {".txt", ".pdf", ".docx", ".csv", ".md", ".markdown", ".xlsx"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+# 文件名级并发锁：防止同一文件同时上传导致数据竞争
+_upload_locks: dict[str, threading.Lock] = {}
+_upload_locks_guard = threading.Lock()
+
+
+def _get_upload_lock(filename: str) -> threading.Lock:
+    with _upload_locks_guard:
+        if filename not in _upload_locks:
+            _upload_locks[filename] = threading.Lock()
+        return _upload_locks[filename]
 
 
 @router.post("/documents/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile, db: Session = Depends(get_db)):
+    raw_name = Path(file.filename or "").name
+    lock = _get_upload_lock(raw_name)
+    if not lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail=f"文件 {raw_name} 正在处理中，请稍后重试")
+    try:
+        return await _do_upload(file, raw_name, db)
+    finally:
+        lock.release()
+        with _upload_locks_guard:
+            _upload_locks.pop(raw_name, None)
+
+
+async def _do_upload(file: UploadFile, raw_name: str, db: Session):
     try:
         # 1. 校验文件格式
-        suffix = Path(file.filename or "").suffix.lower()
+        suffix = Path(raw_name).suffix.lower()
         if suffix not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
                 detail=f"不支持的文件格式: {suffix}，仅支持 {', '.join(ALLOWED_EXTENSIONS)}",
             )
 
-        # 2. 保存文件
+        # 2. 流式保存文件，边写边检查大小
         save_dir = Path(settings.UPLOAD_DIR)
         save_dir.mkdir(parents=True, exist_ok=True)
-        file_path = save_dir / file.filename
+        file_path = save_dir / raw_name
+        file_size = 0
+        CHUNK_LIMIT = 1024 * 1024  # 1MB per read
         with open(file_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+            while True:
+                chunk = await file.read(CHUNK_LIMIT)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > MAX_FILE_SIZE:
+                    f.close()
+                    file_path.unlink()
+                    raise HTTPException(status_code=400, detail="文件大小不能超过 50MB")
+                f.write(chunk)
 
-        # 3. 校验文件大小
-        file_size = file_path.stat().st_size
-        if file_size > MAX_FILE_SIZE:
-            file_path.unlink()
-            raise HTTPException(status_code=400, detail="文件大小不能超过 50MB")
         if file_size == 0:
             file_path.unlink()
             raise HTTPException(status_code=400, detail="文件为空")
 
         # 4. Manifest 检查
-        check = check_file(str(file_path), file.filename)
+        check = check_file(str(file_path), raw_name)
         if not check["changed"]:
-            existing = db.query(Document).filter_by(filename=file.filename).first()
+            existing = db.query(Document).filter_by(filename=raw_name).first()
             return UploadResponse(
                 document_id=existing.id if existing else "",
-                filename=file.filename,
+                filename=raw_name,
                 chunk_count=existing.chunk_count if existing else 0,
                 status="unchanged",
             )
 
         # 5. 清理旧数据（更新场景）
-        old_doc = db.query(Document).filter_by(filename=file.filename).first()
+        old_doc = db.query(Document).filter_by(filename=raw_name).first()
         if old_doc:
             delete_by_document_id(old_doc.id)
             db.query(Chunk).filter_by(document_id=old_doc.id).delete()
@@ -87,7 +118,7 @@ async def upload_document(file: UploadFile, db: Session = Depends(get_db)):
         # 8. 写入 SQLite
         doc = Document(
             id=document_id,
-            filename=file.filename,
+            filename=raw_name,
             file_path=str(file_path),
             file_size=file_size,
             file_type=suffix.lstrip("."),
@@ -100,21 +131,21 @@ async def upload_document(file: UploadFile, db: Session = Depends(get_db)):
                 document_id=document_id,
                 chunk_index=i,
                 content=chunk.page_content,
-                metadata_json=str(chunk.metadata),
+                metadata_json=json.dumps(chunk.metadata, ensure_ascii=False),
             ))
         db.commit()
 
         # 9. 更新 Manifest
-        update_manifest(file.filename, check["md5"], len(chunks))
+        update_manifest(raw_name, check["md5"], len(chunks))
 
         # 10. 重建 BM25 索引
         rebuild_bm25_index()
 
         status = "updated" if old_doc else "new"
-        logger.info("文档上传成功: {} ({} chunks, {})", file.filename, len(chunks), status)
+        logger.info("文档上传成功: {} ({} chunks, {})", raw_name, len(chunks), status)
         return UploadResponse(
             document_id=document_id,
-            filename=file.filename,
+            filename=raw_name,
             chunk_count=len(chunks),
             status=status,
         )

@@ -1,4 +1,7 @@
-"""Streamlit 前端：智能知识库问答界面。"""
+"""Streamlit 前端：智能知识库问答界面（支持流式输出）。"""
+
+import hashlib
+import json
 
 import requests
 import streamlit as st
@@ -23,6 +26,10 @@ if "conversation_id" not in st.session_state:
     st.session_state.conversation_id = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "uploaded_hashes" not in st.session_state:
+    st.session_state.uploaded_hashes = set()
+if "pending_sources" not in st.session_state:
+    st.session_state.pending_sources = None
 
 
 # ====== 工具函数 ======
@@ -62,6 +69,35 @@ def api_delete(path: str):
         return None
 
 
+def _sse_stream(path: str, json_data: dict):
+    """调用 SSE 端点，yield 每个 token。结束后设置 st.session_state.pending_sources。"""
+    try:
+        with requests.post(f"{API_BASE}{path}", json=json_data, stream=True, timeout=300) as r:
+            r.raise_for_status()
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data: "):
+                    continue
+                payload = line[6:]
+                if payload == "[DONE]":
+                    break
+                try:
+                    event = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") == "token":
+                    yield event["content"]
+                elif event.get("type") == "done":
+                    st.session_state.pending_sources = event.get("sources", [])
+                    if event.get("conversation_id"):
+                        st.session_state.conversation_id = event["conversation_id"]
+                elif event.get("type") == "error":
+                    st.error(f"LLM 错误: {event.get('message', '未知错误')}")
+    except requests.ConnectionError:
+        st.error("无法连接后端服务，请确认 FastAPI 已启动 (localhost:8000)")
+    except requests.RequestException as e:
+        st.error(f"API 错误: {e}")
+
+
 def format_file_size(size_bytes: int) -> str:
     if size_bytes < 1024:
         return f"{size_bytes} B"
@@ -84,19 +120,23 @@ with st.sidebar:
     st.markdown("### <span class='icon'>upload_file</span> 上传文档", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(
         "拖拽或点击上传",
-        type=["txt", "pdf", "docx"],
+        type=["txt", "pdf", "docx", "csv", "md", "markdown", "xlsx"],
         label_visibility="collapsed",
-        help="支持 TXT、PDF、DOCX，最大 50MB",
+        help="支持 TXT、PDF、DOCX、CSV、Markdown、Excel，最大 50MB",
     )
     if uploaded_file:
-        with st.spinner(f"正在处理 {uploaded_file.name}..."):
-            files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-            result = api_post("/documents/upload", files=files)
-            if result:
-                if result["status"] == "unchanged":
-                    st.info(f"{result['filename']} 未变化，已跳过")
-                else:
-                    st.success(f"{result['filename']} ({result['chunk_count']} 个文本片段)")
+        file_bytes = uploaded_file.getvalue()
+        file_hash = hashlib.md5(file_bytes).hexdigest()
+        if file_hash not in st.session_state.uploaded_hashes:
+            with st.spinner(f"正在处理 {uploaded_file.name}..."):
+                files = {"file": (uploaded_file.name, file_bytes)}
+                result = api_post("/documents/upload", files=files)
+                if result:
+                    st.session_state.uploaded_hashes.add(file_hash)
+                    if result["status"] == "unchanged":
+                        st.info(f"{result['filename']} 未变化，已跳过")
+                    else:
+                        st.success(f"{result['filename']} ({result['chunk_count']} 个文本片段)")
 
     # --- 文档列表 ---
     st.markdown("### <span class='icon'>folder_open</span> 已上传文档", unsafe_allow_html=True)
@@ -130,6 +170,11 @@ with st.sidebar:
         "混合检索",
         value=False,
         help="BM25 关键词 + 向量语义，双重检索融合，效果更好",
+    )
+    use_stream = st.checkbox(
+        "流式输出",
+        value=True,
+        help="逐字显示回答，无需等待全部生成",
     )
 
     st.divider()
@@ -178,7 +223,7 @@ if not st.session_state.messages:
     st.markdown("""
     欢迎使用智能知识库问答系统！使用步骤：
 
-    1. 在左侧上传文档（TXT / PDF / DOCX）
+    1. 在左侧上传文档（TXT / PDF / DOCX / CSV / Markdown）
     2. 在下方输入问题
     3. 系统将基于文档内容为你回答
     """)
@@ -186,31 +231,46 @@ if not st.session_state.messages:
 # 用户输入
 if prompt := st.chat_input("输入你的问题..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.pending_sources = None
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    chat_data = {
+        "message": prompt,
+        "conversation_id": st.session_state.conversation_id,
+        "use_rewrite": use_rewrite,
+        "use_hybrid": use_hybrid,
+    }
+
     with st.chat_message("assistant"):
-        with st.spinner("正在检索知识库并生成回答..."):
-            result = api_post("/chat", json_data={
-                "message": prompt,
-                "conversation_id": st.session_state.conversation_id,
-                "use_rewrite": use_rewrite,
-                "use_hybrid": use_hybrid,
-            })
+        if use_stream:
+            # 流式输出：逐字显示
+            answer = st.write_stream(
+                _sse_stream("/chat/stream", chat_data)
+            )
+        else:
+            # 非流式输出
+            with st.spinner("正在检索知识库并生成回答..."):
+                result = api_post("/chat", json_data=chat_data)
+            if result:
+                answer = result["answer"]
+                st.session_state.conversation_id = result["conversation_id"]
+                st.session_state.pending_sources = result.get("sources", [])
+                st.markdown(answer)
+            else:
+                answer = ""
 
-        if result:
-            st.session_state.conversation_id = result["conversation_id"]
-            st.markdown(result["answer"])
+        # 来源展示
+        if st.session_state.pending_sources:
+            with st.expander("参考来源", expanded=False):
+                for i, src in enumerate(st.session_state.pending_sources, 1):
+                    page_info = f" · 第 {src['page'] + 1} 页" if src["page"] >= 0 else ""
+                    st.markdown(f"**{i}. {src['filename']}**{page_info}（片段 {src['chunk_index'] + 1}）")
+                    st.caption(src["snippet"])
 
-            # 来源展示
-            if result["sources"]:
-                with st.expander("参考来源", expanded=False):
-                    for i, src in enumerate(result["sources"], 1):
-                        page_info = f" · 第 {src['page'] + 1} 页" if src["page"] >= 0 else ""
-                        st.markdown(f"**{i}. {src['filename']}**{page_info}（片段 {src['chunk_index'] + 1}）")
-                        st.caption(src["snippet"])
-
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": result["answer"],
-            })
+    # 保存助手消息
+    if answer:
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer,
+        })

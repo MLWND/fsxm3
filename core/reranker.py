@@ -8,9 +8,6 @@ from config.settings import settings
 _reranker = None
 _reranker_loaded = False
 
-# 本地模型路径（ModelScope 下载）
-LOCAL_MODEL_PATH = r"C:\Users\XJL\.cache\modelscope\hub\models\BAAI\bge-reranker-v2-m3"
-
 
 def get_reranker():
     global _reranker, _reranker_loaded
@@ -18,8 +15,8 @@ def get_reranker():
         return _reranker
     try:
         from sentence_transformers import CrossEncoder
-        logger.info("正在加载 Reranker 模型...")
-        _reranker = CrossEncoder(LOCAL_MODEL_PATH)
+        logger.info("正在加载 Reranker 模型: {}", settings.RERANKER_MODEL)
+        _reranker = CrossEncoder(settings.RERANKER_MODEL)
         _reranker_loaded = True
         logger.info("Reranker 模型已就绪")
         return _reranker

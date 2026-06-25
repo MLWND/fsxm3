@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    container_name: kb-qa-system
+    ports:
+      - "8000:8000"   # FastAPI
+      - "8501:8501"   # Streamlit
+    volumes:
+      - app-data:/app/data        # 持久化：Chroma/SQLite/上传文件
+      - ./.env:/app/.env:ro       # 配置文件（只读挂载）
+    environment:
+      - TZ=Asia/Shanghai
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    restart: unless-stopped
+    # GPU 支持（取消注释启用，需要 nvidia-container-toolkit）
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  app-data:
+    driver: local

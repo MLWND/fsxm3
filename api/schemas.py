@@ -2,14 +2,14 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=10000)
     conversation_id: str | None = None
-    use_rewrite: bool = False   # 查询改写
-    use_hybrid: bool = False   # 混合检索
+    use_rewrite: bool = False
+    use_hybrid: bool = False
 
 
 class SourceInfo(BaseModel):
@@ -65,3 +65,10 @@ class DocumentInfo(BaseModel):
 
 class DocumentListResponse(BaseModel):
     documents: list[DocumentInfo]
+
+
+class ErrorResponse(BaseModel):
+    """统一错误响应格式。"""
+    detail: str
+    error_code: str = "UNKNOWN"
+    request_id: str | None = None

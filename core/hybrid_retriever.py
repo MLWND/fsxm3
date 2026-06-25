@@ -3,6 +3,8 @@
 效果：兼顾精确关键词匹配和语义理解，比单一检索质量更高。
 """
 
+import hashlib
+
 import jieba
 from langchain_core.documents import Document
 from loguru import logger
@@ -15,6 +17,14 @@ from core.vectorstore import get_vectorstore
 def _tokenize(text: str) -> list[str]:
     """中文分词：jieba 切词 + 小写化。"""
     return [w.lower() for w in jieba.lcut(text) if w.strip()]
+
+
+def _doc_key(doc: Document) -> str:
+    """生成文档唯一标识：source + chunk_index + 内容哈希，避免前缀碰撞。"""
+    src = doc.metadata.get("source", "")
+    idx = doc.metadata.get("chunk_index", "")
+    content_hash = hashlib.md5(doc.page_content.encode()).hexdigest()[:12]
+    return f"{src}:{idx}:{content_hash}"
 
 
 class HybridRetriever:
@@ -79,12 +89,12 @@ class HybridRetriever:
         doc_map: dict[str, Document] = {}
 
         for rank, doc in enumerate(bm25_docs):
-            key = doc.page_content[:100]
+            key = _doc_key(doc)
             doc_scores[key] = doc_scores.get(key, 0) + bm25_weight / (60 + rank)
             doc_map[key] = doc
 
         for rank, doc in enumerate(vector_docs):
-            key = doc.page_content[:100]
+            key = _doc_key(doc)
             doc_scores[key] = doc_scores.get(key, 0) + vector_weight / (60 + rank)
             doc_map[key] = doc
 

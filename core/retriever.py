@@ -32,11 +32,6 @@ def retrieve(query: str, top_k: int | None = None, use_hybrid: bool = False) -> 
     if not candidates:
         return []
 
-    # Rerank 精排
-    from core.reranker import get_reranker
-    model = get_reranker()
-    if model is None:
-        return candidates[:top_k]
-
+    # Rerank 精排（rerank 内部已处理模型加载失败的 fallback）
     from core.reranker import rerank
     return rerank(query, candidates, top_k=top_k)

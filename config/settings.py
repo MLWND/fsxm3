@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 项目根目录
@@ -14,10 +15,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    # === 智谱 AI（OpenAI 兼容接口）===
+    # === LLM（OpenAI 兼容接口，默认 Agnes AI）===
     ZHIPUAI_API_KEY: str = ""
-    ZHIPUAI_MODEL: str = "glm-4.7-flash"
-    ZHIPUAI_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4/"
+    ZHIPUAI_MODEL: str = "agnes-2.0-flash"
+    ZHIPUAI_BASE_URL: str = "https://apihub.agnes-ai.com/v1"
 
     # === Embedding ===
     EMBEDDING_MODEL: str = "BAAI/bge-small-zh-v1.5"
@@ -50,6 +51,27 @@ class Settings(BaseSettings):
     # === API ===
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
+
+    # === CORS ===
+    CORS_ORIGINS: list[str] = ["http://localhost:8501"]
+
+    # === 认证 ===
+    API_KEY: str = ""  # 为空则不启用认证
+
+    # === 对话历史 ===
+    HISTORY_MAX_TOKENS: int = 2000  # 注入 LLM 的历史消息 token 上限
+
+    @model_validator(mode="after")
+    def _validate_critical(self) -> "Settings":
+        """启动时校验关键配置。"""
+        if not self.ZHIPUAI_API_KEY:
+            import warnings
+            warnings.warn(
+                "ZHIPUAI_API_KEY 为空，LLM 功能将不可用。"
+                "请在 .env 文件中配置 ZHIPUAI_API_KEY=your-key",
+                stacklevel=1,
+            )
+        return self
 
 
 settings = Settings()
