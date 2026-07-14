@@ -1,6 +1,7 @@
 """Pydantic 请求/响应模型。"""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +11,7 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     use_rewrite: bool = False
     use_hybrid: bool = False
+    search_mode: Literal["local", "web", "hybrid"] = "local"
 
 
 class SourceInfo(BaseModel):
@@ -19,10 +21,16 @@ class SourceInfo(BaseModel):
     snippet: str           # 来源片段内容
 
 
+class WebSourceInfo(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     answer: str
-    sources: list[SourceInfo]
+    sources: list[SourceInfo | WebSourceInfo]
 
 
 class ChatMessageResponse(BaseModel):
