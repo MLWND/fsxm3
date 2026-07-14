@@ -1,6 +1,14 @@
 # 智能知识库问答系统
 
-基于 LangChain + RAG 技术的智能知识库问答系统。支持多格式文档上传、增量同步、混合检索、Rerank 精排、查询改写、流式输出和来源追溯。
+[![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.38+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3+-1C3C3C?logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Exa](https://img.shields.io/badge/Exa-Web_Search-6C5CE7?logo=internetexplorer&logoColor=white)](https://exa.ai/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
+
+基于 LangChain + RAG 技术的智能知识库问答系统。支持多格式文档上传、增量同步、混合检索、Rerank 精排、查询改写、流式输出、联网搜索和来源追溯。
 
 ![系统架构总览](img/核心流程.png)
 
