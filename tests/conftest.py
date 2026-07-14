@@ -8,6 +8,7 @@ import pytest
 
 # 确保测试环境不读写真实 .env
 os.environ.setdefault("ZHIPUAI_API_KEY", "test-key-not-real")
+os.environ.setdefault("EXA_API_KEY", "test-exa-key-not-real")
 
 
 @pytest.fixture
