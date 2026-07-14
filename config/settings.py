@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # === 对话历史 ===
     HISTORY_MAX_TOKENS: int = 2000  # 注入 LLM 的历史消息 token 上限
 
+    # === 联网搜索 ===
+    EXA_API_KEY: str = ""
+    WEB_SEARCH_TOP_K: int = 5
+
     @model_validator(mode="after")
     def _validate_critical(self) -> "Settings":
         """启动时校验关键配置。"""
