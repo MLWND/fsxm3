@@ -52,8 +52,8 @@ python run.py                     # 3. 启动
 | 类别 | 能力 |
 |------|------|
 | **文档处理** | 6 种格式（TXT / PDF / DOCX / CSV / Markdown / Excel）、中文分块、MD5 增量同步、并发上传保护、精确删除 |
-| **检索策略** | MMR 语义检索、BM25 + 向量混合检索（RRF 融合）、Rerank 精排（top-20 → top-5）、LLM 查询改写 |
-| **问答追溯** | SSE 流式输出、多轮对话（token 窗口裁剪）、来源文件 + 页码 + 片段预览、LLM 自动生成标题 |
+| **检索策略** | MMR 语义检索、BM25 + 向量混合检索（RRF 融合）、Rerank 精排（top-20 → top-5）、LLM 查询改写、Exa 联网搜索（仅本地 / 仅网络 / 混合三种模式） |
+| **问答追溯** | SSE 流式输出、多轮对话（token 窗口裁剪）、来源文件 + 页码 + 片段预览、网络来源 URL + 标题、LLM 自动生成标题 |
 | **工程能力** | 9 个 API 端点、健康检查、请求追踪（X-Request-ID）、API Key 认证、孤儿数据自动清理、Alembic 迁移 |
 | **部署** | Docker 一键部署（CPU-only torch，约 3GB）、`python run.py` 本地一键启动 |
 
@@ -77,6 +77,7 @@ python run.py                     # 3. 启动
 | Reranker | BAAI/bge-reranker-v2-m3 | CrossEncoder 精排 |
 | 向量库 | Chroma | 持久化存储，支持 MMR 检索 |
 | 混合检索 | BM25 + Chroma | jieba 分词，RRF 融合排序 |
+| 联网搜索 | Exa Search API | 自然语言搜索，highlights 模式，支持三种搜索模式 |
 | 前端 / 后端 | Streamlit + FastAPI | SSE 流式输出，Swagger 文档 |
 | 数据库 | SQLite + SQLAlchemy + Alembic | 4 表设计，ORM，迁移支持 |
 | 日志 | loguru | 控制台 + 文件轮转 + 结构化 JSON |
@@ -92,8 +93,9 @@ fsxm3/
 │   ├── reranker.py             #   Rerank 精排
 │   ├── vectorstore.py          #   Chroma 向量库
 │   ├── document_processor.py   #   文档加载 + 分块（6 种格式）
-│   ├── retriever.py            #   检索入口（MMR / Hybrid + Rerank）
+│   ├── retriever.py            #   检索入口（MMR / Hybrid + Rerank + 联网调度）
 │   ├── hybrid_retriever.py     #   BM25 + Vector 混合检索
+│   ├── web_search.py           #   Exa 联网搜索 API 封装
 │   └── query_rewrite.py        #   LLM 查询改写
 ├── db/                         # 数据层
 │   ├── database.py             #   SQLite 引擎 + 会话管理
@@ -145,6 +147,8 @@ fsxm3/
 | `RETRIEVAL_TOP_K` / `RERANK_TOP_K` | `20` / `5` | 检索参数 |
 | `API_KEY` | （空） | API 认证密钥（为空不启用） |
 | `HISTORY_MAX_TOKENS` | `2000` | 对话历史 token 窗口 |
+| `EXA_API_KEY` | （空） | Exa 联网搜索 API Key（为空则不启用） |
+| `WEB_SEARCH_TOP_K` | `5` | 网络搜索返回结果数 |
 
 ## 测试
 

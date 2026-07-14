@@ -15,15 +15,16 @@
 cp .env.example .env
 ```
 
-编辑 `.env`，将 `sk-你的API-Key` 替换为你的 Agnes AI API Key：
+编辑 `.env`，将 `sk-你的API-Key` 替换为你的 Agnes AI API Key，并（可选）填入 Exa API Key 以启用联网搜索：
 
 ```
 ZHIPUAI_API_KEY=sk-xxxxxxxxxxxxx
 ZHIPUAI_MODEL=agnes-2.0-flash
 ZHIPUAI_BASE_URL=https://apihub.agnes-ai.com/v1
+EXA_API_KEY=your-exa-api-key      # 可选，启用联网搜索
 ```
 
-> API Key 在 https://apihub.agnes-ai.com 控制台获取
+> API Key 获取：Agnes AI → https://apihub.agnes-ai.com 控制台；Exa → https://dashboard.exa.ai/api-keys（免费额度）
 
 ### 第 2 步：构建并启动
 
@@ -49,6 +50,7 @@ docker compose up -d --build
 2. 左侧上传文档（支持 TXT / PDF / DOCX / CSV / Markdown / Excel）
 3. 底部输入框提问，系统基于文档内容回答
 4. 可开启「流式输出」逐字显示、开启「混合检索」提升质量
+5. 配置 `EXA_API_KEY` 后，可在侧边栏切换搜索模式（仅本地 / 仅网络 / 两者混合）
 
 ## 常用命令
 
