@@ -35,3 +35,9 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Superpowers (SDD artifacts)
+.superpowers/
+
+# Docs (design specs, plans)
+docs/
