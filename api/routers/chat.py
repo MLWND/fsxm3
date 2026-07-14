@@ -17,6 +17,7 @@ from api.schemas import (
     ConversationSummary,
     HistoryResponse,
     SourceInfo,
+    WebSourceInfo,
 )
 from config.settings import settings
 from core.llm import get_llm, invoke_with_retry
@@ -113,28 +114,56 @@ def _build_history_block(conversation_id: str, db: Session) -> str:
     return "\n".join(lines)
 
 
-def _build_rag_context(docs, req_message: str, conversation_id: str, db: Session):
+def _build_rag_context(
+    local_docs: list,
+    web_docs: list,
+    req_message: str,
+    conversation_id: str,
+    db: Session,
+):
     """组装 RAG 上下文、来源和完整 prompt。返回 (answer_or_none, sources, messages_for_llm)。"""
-    if not docs:
-        return "知识库中暂无相关内容，请先上传文档后再提问。", [], None
+    if not local_docs and not web_docs:
+        return "知识库和网络均未找到相关信息，请尝试换个问题。", [], None
 
     context_parts = []
     sources = []
-    seen = set()
-    for d in docs:
-        context_parts.append(d.page_content)
-        filename = d.metadata.get("source", "未知来源")
-        key = f"{filename}_{d.metadata.get('chunk_index', 0)}"
-        if key not in seen:
-            seen.add(key)
-            snippet = d.page_content[:150] + ("..." if len(d.page_content) > 150 else "")
-            sources.append(SourceInfo(
-                filename=filename,
-                page=d.metadata.get("page", -1),
-                chunk_index=d.metadata.get("chunk_index", 0),
-                snippet=snippet,
-            ))
-    context = "\n\n---\n\n".join(context_parts)
+    seen_local = set()
+    seen_web = set()
+
+    # 本地来源
+    if local_docs:
+        context_parts.append("## 本地文档")
+        for d in local_docs:
+            context_parts.append(f"[本地] {d.page_content}")
+            filename = d.metadata.get("source", "未知来源")
+            key = f"{filename}_{d.metadata.get('chunk_index', 0)}"
+            if key not in seen_local:
+                seen_local.add(key)
+                snippet = d.page_content[:150] + ("..." if len(d.page_content) > 150 else "")
+                sources.append(SourceInfo(
+                    filename=filename,
+                    page=d.metadata.get("page", -1),
+                    chunk_index=d.metadata.get("chunk_index", 0),
+                    snippet=snippet,
+                ))
+
+    # 网络来源
+    if web_docs:
+        context_parts.append("## 网络搜索")
+        for d in web_docs:
+            url = d.metadata.get("source_url", "")
+            title = d.metadata.get("title", "未知网页")
+            context_parts.append(f"[网络] {title}\n{d.page_content}")
+            if url not in seen_web:
+                seen_web.add(url)
+                snippet = d.page_content[:150] + ("..." if len(d.page_content) > 150 else "")
+                sources.append(WebSourceInfo(
+                    title=title,
+                    url=url,
+                    snippet=snippet,
+                ))
+
+    context = "\n\n".join(context_parts)
 
     # 构建消息列表
     history_block = _build_history_block(conversation_id, db)
@@ -167,9 +196,13 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
 
         # 查询改写 + 检索
         search_query = rewrite_query(req.message) if req.use_rewrite else req.message
-        docs = retrieve(search_query, use_hybrid=req.use_hybrid)
+        local_docs, web_docs = retrieve(
+            search_query, use_hybrid=req.use_hybrid, search_mode=req.search_mode
+        )
 
-        answer_or_none, sources, messages = _build_rag_context(docs, req.message, conv.id, db)
+        answer_or_none, sources, messages = _build_rag_context(
+            local_docs, web_docs, req.message, conv.id, db
+        )
         if answer_or_none:
             answer = answer_or_none
         else:
@@ -212,9 +245,13 @@ def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
 
         # 查询改写 + 检索
         search_query = rewrite_query(req.message) if req.use_rewrite else req.message
-        docs = retrieve(search_query, use_hybrid=req.use_hybrid)
+        local_docs, web_docs = retrieve(
+            search_query, use_hybrid=req.use_hybrid, search_mode=req.search_mode
+        )
 
-        answer_or_none, sources, messages = _build_rag_context(docs, req.message, conv.id, db)
+        answer_or_none, sources, messages = _build_rag_context(
+            local_docs, web_docs, req.message, conv.id, db
+        )
         if answer_or_none:
             # 无检索结果，直接返回
             def empty_gen():
