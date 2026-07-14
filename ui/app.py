@@ -161,6 +161,15 @@ with st.sidebar:
 
     # --- 功能开关 ---
     st.markdown("### <span class='icon'>tune</span> 功能", unsafe_allow_html=True)
+    search_mode_map = {"仅本地": "local", "仅网络": "web", "两者混合": "hybrid"}
+    search_mode_label = st.radio(
+        "搜索模式",
+        options=list(search_mode_map.keys()),
+        index=0,
+        format_func=lambda x: {"仅本地": "📂 仅本地", "仅网络": "🌐 仅网络", "两者混合": "📂🌐 两者混合"}[x],
+        help="选择检索来源：仅本地知识库 / 仅联网搜索 / 两者混合",
+    )
+    search_mode = search_mode_map[search_mode_label]
     use_rewrite = st.checkbox(
         "查询改写",
         value=False,
@@ -240,6 +249,7 @@ if prompt := st.chat_input("输入你的问题..."):
         "conversation_id": st.session_state.conversation_id,
         "use_rewrite": use_rewrite,
         "use_hybrid": use_hybrid,
+        "search_mode": search_mode,
     }
 
     with st.chat_message("assistant"):
@@ -264,9 +274,15 @@ if prompt := st.chat_input("输入你的问题..."):
         if st.session_state.pending_sources:
             with st.expander("参考来源", expanded=False):
                 for i, src in enumerate(st.session_state.pending_sources, 1):
-                    page_info = f" · 第 {src['page'] + 1} 页" if src["page"] >= 0 else ""
-                    st.markdown(f"**{i}. {src['filename']}**{page_info}（片段 {src['chunk_index'] + 1}）")
-                    st.caption(src["snippet"])
+                    if "url" in src:
+                        # 网络来源
+                        st.markdown(f"**{i}. 🌐 [{src['title']}]({src['url']})**")
+                        st.caption(src["snippet"])
+                    else:
+                        # 本地来源
+                        page_info = f" · 第 {src['page'] + 1} 页" if src["page"] >= 0 else ""
+                        st.markdown(f"**{i}. {src['filename']}**{page_info}（片段 {src['chunk_index'] + 1}）")
+                        st.caption(src["snippet"])
 
     # 保存助手消息
     if answer:
